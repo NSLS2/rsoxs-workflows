@@ -29,7 +29,7 @@ push:
 
 pull:
   - prefect.deployments.steps.git_clone:
-      repository: https://github.com/NSLS-II-SST/workflows-rsoxs
+      repository: https://github.com/JunAishima/workflows-rsoxs.git
       branch: prefect3-pixi-upgrade
 
 deployments:
