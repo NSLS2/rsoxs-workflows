@@ -1,0 +1,53 @@
+name: prefect-docker-pixi-tiled
+prefect-version: 3.6.0
+
+build:
+  - prefect.deployments.steps.run_shell_script:
+      id: get-commit-hash
+      script: git rev-parse --short HEAD
+      stream_output: false
+  - prefect_docker.deployments.steps.build_docker_image:
+      id: build-image
+      requires: prefect-docker>0.6.0
+      image_name: ghcr.io/nsls2/rsoxs-workflow-prefect3
+      tag: "{{ get-commit-hash.stdout }}"
+      dockerfile: Dockerfile
+      additional_tags:
+        - main
+
+push:
+  - prefect_docker.deployments.steps.push_docker_image:
+      requires: prefect-docker>0.6.0
+      image_name: "{{ build-image.image_name }}"
+      tag: "{{ build-image.tag }}"
+      credentials:
+        "{{
+        prefect.blocks.docker-registry-credentials.ghcr-nsls2-rsoxs-workflow-prefect3
+        }}"
+      additional_tags:
+        - main
+
+pull:
+  - prefect.deployments.steps.git_clone:
+      repository: https://github.com/nsls2/rsoxs-workflow-prefect3.git
+      branch: prefect3-pixi-upgrade
+
+deployments:
+  - name: rsoxs-end-of-run-workflow-docker
+    version: 0.1.0
+    description: Deploy the updated Docker image
+    entrypoint: end_of_run_workflow.py:end_of_run_workflow
+    parameters: {}
+    schedule: {}
+    work_pool:
+      job_variables:
+        env:
+          TILED_SITE_PROFILES: /nsls2/software/etc/tiled/profiles
+          TILED_API_KEY: "{{ prefect.blocks.secret.tiled-rsoxs-api-key }}"
+        image: ghcr.io/nsls2/rsoxs-workflow-prefect3:main
+        network_mode: host
+        userns: "keep-id:uid=402953,gid=402953"  # workflow-sst:workflow-sst
+        volumes:
+          - /nsls2/data/sst/proposals:/nsls2/data/sst/proposals
+          - /nsls2/software/etc/tiled:/nsls2/software/etc/tiled
+      name: rsoxs-work-pool-docker
