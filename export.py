@@ -1,4 +1,6 @@
+import getpass
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -306,6 +308,7 @@ def json_export(raw_ref):
 # A separate command is needed to register it with the Prefect server.
 @flow
 def export(ref):
+    print(f"user: {os.getlogin()} effective user: {getpass.getuser}")
     csv_export(ref)
     json_export(ref)
     processed_refs = write_dark_subtraction(ref)
