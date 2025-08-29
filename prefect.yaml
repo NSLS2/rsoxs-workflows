@@ -45,9 +45,10 @@ deployments:
           TILED_SITE_PROFILES: /nsls2/software/etc/tiled/profiles
           TILED_API_KEY: "{{ prefect.blocks.secret.tiled-rsoxs-api-key }}"
         image: ghcr.io/nsls2/rsoxs-workflow-prefect3:main
-        network_mode: host
-        userns: "keep-id:uid=402953,gid=402953"  # workflow-sst:workflow-sst
+        network: slirp4netns
         volumes:
           - /nsls2/data/sst/proposals:/nsls2/data/sst/proposals
           - /nsls2/software/etc/tiled:/nsls2/software/etc/tiled
+        container_create_kwargs:
+          userns_mode: "keep-id:uid=402953,gid=402953"  # workflow-sst:workflow-sst
       name: rsoxs-work-pool-docker
