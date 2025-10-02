@@ -42,7 +42,7 @@ def lookup_directory(start_doc):
     # Filter out paths from other beamlines.
     paths = [path for path in paths if "sst" == path.lower().split("/")[3]]
 
-    # Filter out paths from other cycles and paths for commisioning.
+    # Filter out paths from other cycles and paths for commissioning.
     paths = [
         path
         for path in paths
@@ -136,7 +136,7 @@ def write_dark_subtraction(ref):
     # Map field to processed uid to use in other tasks.
     results = {}
 
-    # Write the dark substracted images to tiled.
+    # Write the dark subtracted images to tiled.
     for field in found_fields:
         light = primary_data[field][:]
         dark = dark_data[field][:]
@@ -231,7 +231,7 @@ def csv_export(raw_ref):
 
     def add_seq_num(dataset):
         """
-        Add a seq_num collumn to the dataset.
+        Add a seq_num column to the dataset.
         This also converts the dataset to a dataframe.
 
         We need a seq_num column, which the server does not include, so we
@@ -299,7 +299,7 @@ def json_export(raw_ref):
         json.dump(start_doc, file, ensure_ascii=False, indent=4)
 
     logger.info(
-        f'wrote json file to: {str(directory / str(start_doc["scan_id"]))}-{start_doc["sample_name"]}.json'
+        f"wrote json file to: {str(directory / str(start_doc['scan_id']))}-{start_doc['sample_name']}.json"
     )
 
 
