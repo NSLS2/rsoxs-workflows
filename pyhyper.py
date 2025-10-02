@@ -39,7 +39,7 @@ def lookup_directory(start_doc):
     # Filter out paths from other beamlines.
     paths = [path for path in paths if "sst" == path.lower().split("/")[3]]
 
-    # Filter out paths from other cycles and paths for commisioning.
+    # Filter out paths from other cycles and paths for commissioning.
     paths = [
         path
         for path in paths
