@@ -7,7 +7,7 @@ import httpx
 # import PyHyperScattering
 from prefect import get_run_logger, task
 
-# from tiled.client import from_profile
+# from utils import get_tiled_client
 
 PATH = "/nsls2/data/dssi/scratch/prefect-outputs/rsoxs/"
 
@@ -77,7 +77,7 @@ def lookup_directory(start_doc):
 #
 #     logger.info(f"{PyHyperScattering.__version__}")
 #
-#     c = from_profile("nsls2")
+#     c = get_tiled_client()
 #     logger.info("Loaded RSoXS Profile...")
 #
 #     logger.info("created RSoXS catalog loader...")
