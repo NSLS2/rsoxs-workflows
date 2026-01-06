@@ -7,13 +7,14 @@ from pathlib import Path
 import httpx
 import numpy
 from prefect import flow, get_run_logger, task
-from tiled.client import show_logs
-from utils import get_tiled_client
+from prefect.blocks.system import Secret
+from tiled.client import from_profile, show_logs
 
 EXPORT_PATH = Path("/nsls2/data/dssi/scratch/prefect-outputs/rsoxs/")
 
 show_logs()
-tiled_client = get_tiled_client()
+api_key = Secret.load("tiled-rsoxs-api-key").get()
+tiled_client = from_profile("nsls2", api_key=api_key)
 tiled_client_raw = tiled_client["raw"]
 tiled_client_processed = tiled_client["sandbox"]
 
