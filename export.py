@@ -14,7 +14,7 @@ EXPORT_PATH = Path("/nsls2/data/dssi/scratch/prefect-outputs/rsoxs/")
 
 show_logs()
 api_key = Secret.load("tiled-rsoxs-api-key").get()
-tiled_client = from_profile("nsls2", api_key=api_key)
+tiled_client = from_profile("nsls2", api_key=api_key)["rsoxs"]
 tiled_client_raw = tiled_client["raw"]
 tiled_client_processed = tiled_client["sandbox"]
 
