@@ -7,16 +7,13 @@ from pathlib import Path
 import httpx
 import numpy
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
-from tiled.client import from_profile, show_logs
+from tiled.client import show_logs
+from data_validation import get_run, get_run_sandbox
+
 
 EXPORT_PATH = Path("/nsls2/data/dssi/scratch/prefect-outputs/rsoxs/")
 
 show_logs()
-api_key = Secret.load("tiled-rsoxs-api-key").get()
-tiled_client = from_profile("nsls2", api_key=api_key)["rsoxs"]
-tiled_client_raw = tiled_client["raw"]
-tiled_client_processed = tiled_client["sandbox"]
 
 
 def lookup_directory(start_doc):
@@ -58,7 +55,7 @@ def lookup_directory(start_doc):
 
 
 @task
-def write_dark_subtraction(ref):
+def write_dark_subtraction(ref, api_key=None):
     """
     This is a Prefect task that perform dark subtraction.
 
@@ -104,7 +101,7 @@ def write_dark_subtraction(ref):
             light - dark.reindex_like(light, method="ffill").data, a_min=0, a_max=None
         ).astype(light.dtype)
 
-    run = tiled_client_raw[ref]
+    run = get_run(ref, api_key=api_key)
 
     full_uid = run.start["uid"]
     logger.info(f"{full_uid = }")  # noqa: E202,E251
@@ -143,7 +140,7 @@ def write_dark_subtraction(ref):
         light = primary_data[field][:]
         dark = dark_data[field][:]
         subtracted = safe_subtract(light, dark)
-        processed_array_client = tiled_client_processed.write_array(
+        processed_array_client = get_run_sandbox(ref, api_key=api_key).write_array(
             subtracted.data,
             metadata={
                 "field": field,
@@ -162,7 +159,7 @@ def write_dark_subtraction(ref):
 
 # Make sure this only runs when the dark subtraction is successful
 @task
-def tiff_export(raw_ref, processed_refs):
+def tiff_export(raw_ref, processed_refs, api_key=None):
     """
     Export processed data into a tiff file.
 
@@ -180,7 +177,7 @@ def tiff_export(raw_ref, processed_refs):
     # but for now we are maintaining backward-compatibility with existing names.
     STREAM_NAME = "primary"
 
-    start_doc = tiled_client_raw[raw_ref].start
+    start_doc = get_run(raw_ref, api_key=api_key).start
     directory = (
         lookup_directory(start_doc)
         / start_doc["project_name"]
@@ -192,7 +189,7 @@ def tiff_export(raw_ref, processed_refs):
     logger.info(f"starting tiff export to {directory}")
 
     for field, processed_uid in processed_refs.items():
-        dataset = tiled_client_processed[processed_uid]
+        dataset = get_run_sandbox(processed_uid, api_key=api_key)
         assert field == dataset.metadata["field"]
         num_frames = len(dataset)
         for i in range(num_frames):
@@ -205,7 +202,7 @@ def tiff_export(raw_ref, processed_refs):
 
 # Retry this task if it fails
 @task(retries=2, retry_delay_seconds=10)
-def csv_export(raw_ref):
+def csv_export(raw_ref, api_key=None):
     """
     Export each stream as a CSV file.
 
@@ -221,11 +218,11 @@ def csv_export(raw_ref):
 
     """
 
-    run = tiled_client_raw[raw_ref]
+    run = get_run(raw_ref, api_key=api_key)
     start = run.start
 
     # Make the directories.
-    start_doc = tiled_client_raw[raw_ref].start
+    start_doc = get_run(raw_ref, api_key=api_key).start
     base_directory = lookup_directory(start_doc) / start_doc["project_name"]
     base_directory.mkdir(parents=True, exist_ok=True)
 
@@ -272,7 +269,7 @@ def csv_export(raw_ref):
 
 
 @task
-def json_export(raw_ref):
+def json_export(raw_ref, api_key=None):
     """
     Export start document into a json file.
 
@@ -283,7 +280,7 @@ def json_export(raw_ref):
         a scan id, or an index (e.g. -1).
 
     """
-    start_doc = tiled_client_raw[raw_ref].start
+    start_doc = get_run(raw_ref, api_key=api_key).start
     directory = (
         lookup_directory(start_doc)
         / start_doc["project_name"]
@@ -309,13 +306,13 @@ def json_export(raw_ref):
 # Make the Prefect Flow.
 # A separate command is needed to register it with the Prefect server.
 @flow
-def export(ref):
+def export(ref, api_key=None):
     print(f"effective user: {getpass.getuser()}")
-    csv_export(ref)
-    json_export(ref)
-    processed_refs = write_dark_subtraction(ref)
+    csv_export(ref, api_key=api_key)
+    json_export(ref, api_key=api_key)
+    processed_refs = write_dark_subtraction(ref, api_key=api_key)
     if processed_refs:
-        tiff_export(ref, processed_refs)
+        tiff_export(ref, processed_refs, api_key=api_key)
 
 
 # This line will mark this flow as succeeded based on
