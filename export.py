@@ -55,7 +55,7 @@ def lookup_directory(start_doc):
 
 
 @task
-def write_dark_subtraction(ref, api_key=None):
+def write_dark_subtraction(ref, api_key=None, dry_run=None):
     """
     This is a Prefect task that perform dark subtraction.
 
@@ -140,17 +140,20 @@ def write_dark_subtraction(ref, api_key=None):
         light = primary_data[field][:]
         dark = dark_data[field][:]
         subtracted = safe_subtract(light, dark)
-        processed_array_client = get_run_sandbox(ref, api_key=api_key).write_array(
-            subtracted.data,
-            metadata={
-                "field": field,
-                "python_environment": sys.prefix,
-                "raw_uid": full_uid,
-                "operation": "dark subtraction",
-            },
-            access_tags=["rsoxs_sandbox"],
-        )
-        results[field] = processed_array_client.item["id"]
+        if dry_run:
+            logger.info("Dry_run: not writing subtracted images to Tiled.")
+        else:
+            processed_array_client = get_run_sandbox(ref, api_key=api_key).write_array(
+                subtracted.data,
+                metadata={
+                    "field": field,
+                    "python_environment": sys.prefix,
+                    "raw_uid": full_uid,
+                    "operation": "dark subtraction",
+                },
+                access_tags=["rsoxs_sandbox"],
+            )
+            results[field] = processed_array_client.item["id"]
 
     logger.info("completed dark subtraction")
 
