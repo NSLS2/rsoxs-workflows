@@ -20,11 +20,11 @@ def log_completion():
 
 
 @flow
-def end_of_run_workflow(stop_doc, api_key=None):
+def end_of_run_workflow(stop_doc, api_key=None, dry_run=None):
     uid = stop_doc["run_start"]
     if not api_key:
         api_key = get_api_key_from_env()
 
     # general_data_validation(uid)
-    export(uid, api_key=api_key)
+    export(uid, api_key=api_key, dry_run=None)
     log_completion()

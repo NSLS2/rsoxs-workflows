@@ -159,7 +159,7 @@ def write_dark_subtraction(ref, api_key=None):
 
 # Make sure this only runs when the dark subtraction is successful
 @task
-def tiff_export(raw_ref, processed_refs, api_key=None):
+def tiff_export(raw_ref, processed_refs, api_key=None, dry_run=None):
     """
     Export processed data into a tiff file.
 
@@ -194,15 +194,21 @@ def tiff_export(raw_ref, processed_refs, api_key=None):
         num_frames = len(dataset)
         for i in range(num_frames):
             filename = f"{start_doc['scan_id']}-{start_doc['sample_name']}-{STREAM_NAME}-{field}-{i}.tiff"
-            logger.info(f"Exporting {filename}")
-            dataset.export(directory / filename, slice=(i), format="image/tiff")
+            if dry_run:
+                logger.info(f"Dry_run: tiff: not exporting {filename}")
+            else:
+                logger.info(f"Exporting {filename}")
+                dataset.export(directory / filename, slice=(i), format="image/tiff")
 
-    logger.info(f"wrote tiff files to: {directory}")
+    if dry_run:
+        logger.info(f"Dry_run: did not write tiff files to: {directory}")
+    else:
+        logger.info(f"wrote tiff files to: {directory}")
 
 
 # Retry this task if it fails
 @task(retries=2, retry_delay_seconds=10)
-def csv_export(raw_ref, api_key=None):
+def csv_export(raw_ref, api_key=None, dry_run=None):
     """
     Export each stream as a CSV file.
 
@@ -260,16 +266,30 @@ def csv_export(raw_ref, api_key=None):
         dataframe = add_seq_num(ds)
 
         # Write the data.
-        dataframe.to_csv(
-            directory / f"{start['scan_id']}-{start['sample_name']}-{stream_name}.csv",
-            index=False,
-        )
+        if dry_run:
+            csv_output = dataframe.to_string(
+                index=False,
+            )
+            filename = (
+                directory
+                / f"{start['scan_id']}-{start['sample_name']}-{stream_name}.csv"
+            )
+            logger.info(
+                f"Dry run: CSV: did not write to file {filename}: output: {csv_output}"
+            )
+
+        else:
+            dataframe.to_csv(
+                directory
+                / f"{start['scan_id']}-{start['sample_name']}-{stream_name}.csv",
+                index=False,
+            )
 
     logger.info(f"wrote csv files to: {directory}")
 
 
 @task
-def json_export(raw_ref, api_key=None):
+def json_export(raw_ref, api_key=None, dry_run=None):
     """
     Export start document into a json file.
 
@@ -291,28 +311,35 @@ def json_export(raw_ref, api_key=None):
     logger = get_run_logger()
     logger.info(f"starting json export to {directory}")
 
-    with open(
-        directory / f"{start_doc['scan_id']}-{start_doc['sample_name']}.json",
-        "w",
-        encoding="utf-8",
-    ) as file:
-        json.dump(start_doc, file, ensure_ascii=False, indent=4)
+    if dry_run:
+        json_output = json.dumps(start_doc, ensure_ascii=False, indent=4)
+        filename = directory / f"{start_doc['scan_id']}-{start_doc['sample_name']}.json"
+        logger.info(
+            f"Dry_run: json: did not write to filename: {filename}: output: {json_output}"
+        )
+    else:
+        with open(
+            directory / f"{start_doc['scan_id']}-{start_doc['sample_name']}.json",
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(start_doc, file, ensure_ascii=False, indent=4)
 
-    logger.info(
-        f"wrote json file to: {str(directory / str(start_doc['scan_id']))}-{start_doc['sample_name']}.json"
-    )
+        logger.info(
+            f"wrote json file to: {str(directory / str(start_doc['scan_id']))}-{start_doc['sample_name']}.json"
+        )
 
 
 # Make the Prefect Flow.
 # A separate command is needed to register it with the Prefect server.
 @flow
-def export(ref, api_key=None):
+def export(ref, api_key=None, dry_run=None):
     print(f"effective user: {getpass.getuser()}")
-    csv_export(ref, api_key=api_key)
-    json_export(ref, api_key=api_key)
-    processed_refs = write_dark_subtraction(ref, api_key=api_key)
+    csv_export(ref, api_key=api_key, dry_run=dry_run)
+    json_export(ref, api_key=api_key, dry_run=dry_run)
+    processed_refs = write_dark_subtraction(ref, api_key=api_key, dry_run=dry_run)
     if processed_refs:
-        tiff_export(ref, processed_refs, api_key=api_key)
+        tiff_export(ref, processed_refs, api_key=api_key, dry_run=dry_run)
 
 
 # This line will mark this flow as succeeded based on
