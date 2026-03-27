@@ -25,7 +25,7 @@ def read_stream(run, stream):
 
 
 @task(retries=2, retry_delay_seconds=10)
-def read_all_streams(uid, beamline_acronym="rsoxs", api_key=None):
+def read_all_streams(uid, api_key=None):
     logger = get_run_logger()
     run = get_run(uid, api_key=api_key)
     logger.info(f"Validating uid {run.start['uid']}")
