@@ -42,5 +42,5 @@ def read_all_streams(uid, api_key=None):
 
 
 @flow
-def general_data_validation(uid, beamline_acronym="rsoxs", api_key=None):
-    read_all_streams(uid, beamline_acronym, api_key=api_key)
+def general_data_validation(uid, api_key=None):
+    read_all_streams(uid, api_key=api_key)
