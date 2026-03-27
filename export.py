@@ -143,7 +143,7 @@ def write_dark_subtraction(ref, api_key=None, dry_run=None):
         if dry_run:
             logger.info("Dry_run: not writing subtracted images to Tiled.")
         else:
-            processed_array_client = get_run_sandbox(ref, api_key=api_key).write_array(
+            processed_array_client = get_sandbox_client(api_key=api_key).write_array(
                 subtracted.data,
                 metadata={
                     "field": field,
