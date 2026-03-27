@@ -8,7 +8,7 @@ import httpx
 import numpy
 from prefect import flow, get_run_logger, task
 from tiled.client import show_logs
-from data_validation import get_run, get_run_sandbox
+from data_validation import get_run, get_run_sandbox, get_sandbox_client
 
 
 EXPORT_PATH = Path("/nsls2/data/dssi/scratch/prefect-outputs/rsoxs/")
@@ -228,10 +228,9 @@ def csv_export(raw_ref, api_key=None, dry_run=None):
     """
 
     run = get_run(raw_ref, api_key=api_key)
-    start = run.start
+    start_doc = run.start
 
     # Make the directories.
-    start_doc = get_run(raw_ref, api_key=api_key).start
     base_directory = lookup_directory(start_doc) / start_doc["project_name"]
     base_directory.mkdir(parents=True, exist_ok=True)
 
@@ -258,7 +257,7 @@ def csv_export(raw_ref, api_key=None, dry_run=None):
         logger.info(f"Exporting csv for stream {stream_name}")
 
         # Figure out the directory to write to.
-        scan_directory = f"{start['scan_id']}" if stream_name != "primary" else "."
+        scan_directory = f"{start_doc['scan_id']}" if stream_name != "primary" else "."
         directory = base_directory / scan_directory
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -275,7 +274,7 @@ def csv_export(raw_ref, api_key=None, dry_run=None):
             )
             filename = (
                 directory
-                / f"{start['scan_id']}-{start['sample_name']}-{stream_name}.csv"
+                / f"{start_doc['scan_id']}-{start_doc['sample_name']}-{stream_name}.csv"
             )
             logger.info(
                 f"Dry run: CSV: did not write to file {filename}: output: {csv_output}"
@@ -284,7 +283,7 @@ def csv_export(raw_ref, api_key=None, dry_run=None):
         else:
             dataframe.to_csv(
                 directory
-                / f"{start['scan_id']}-{start['sample_name']}-{stream_name}.csv",
+                / f"{start_doc['scan_id']}-{start_doc['sample_name']}-{stream_name}.csv",
                 index=False,
             )
 

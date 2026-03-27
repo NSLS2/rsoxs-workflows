@@ -18,6 +18,13 @@ def get_run_sandbox(uid, api_key=None):
     return run
 
 
+@task(retries=2, retry_delay_seconds=10)
+def get_sandbox_client(api_key=None):
+    tiled_client = from_uri("https://tiled.nsls2.bnl.gov", api_key=api_key)
+    sandbox_client = tiled_client["rsoxs/sandbox"]
+    return sandbox_client
+
+
 @task
 def read_stream(run, stream):
     stream_data = run[stream].read()
