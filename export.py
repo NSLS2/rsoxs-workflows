@@ -9,6 +9,7 @@ import numpy
 from prefect import flow, get_run_logger, task
 from tiled.client import show_logs
 from data_validation import get_run, get_run_sandbox, get_sandbox_client
+import pandas as pd
 
 
 EXPORT_PATH = Path("/nsls2/data/dssi/scratch/prefect-outputs/rsoxs/")
@@ -226,13 +227,14 @@ def csv_export(raw_ref, api_key=None, dry_run=None):
         a scan id, or an index (e.g. -1).
 
     """
-
+    print(f"dry_run: {dry_run}")
     run = get_run(raw_ref, api_key=api_key)
     start_doc = run.start
 
     # Make the directories.
     base_directory = lookup_directory(start_doc) / start_doc["project_name"]
-    base_directory.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        base_directory.mkdir(parents=True, exist_ok=True)
 
     logger = get_run_logger()
     logger.info(f"starting csv export to {base_directory}")
@@ -259,7 +261,8 @@ def csv_export(raw_ref, api_key=None, dry_run=None):
         # Figure out the directory to write to.
         scan_directory = f"{start_doc['scan_id']}" if stream_name != "primary" else "."
         directory = base_directory / scan_directory
-        directory.mkdir(parents=True, exist_ok=True)
+        if not dry_run:
+            directory.mkdir(parents=True, exist_ok=True)
 
         # Prepare the data.
         dataset = stream["data"]
@@ -269,12 +272,21 @@ def csv_export(raw_ref, api_key=None, dry_run=None):
 
         # Write the data.
         if dry_run:
-            csv_output = dataframe.to_string(
-                index=False,
-            )
             filename = (
                 directory
                 / f"{start_doc['scan_id']}-{start_doc['sample_name']}-{stream_name}.csv"
+            )
+            if len(dataframe) >= 2:
+                output_dataframe = pd.concat([dataframe.head(1)])
+            elif len(dataframe) == 1:
+                output_dataframe = pd.concat([dataframe.head(1), dataframe.tail(1)])
+            else:
+                logger.info(
+                    f"Dry run: CSV did not write file {filename}: output: (no data)"
+                )
+                return
+            csv_output = output_dataframe.to_string(
+                index=False,
             )
             logger.info(
                 f"Dry run: CSV: did not write to file {filename}: output: {csv_output}"
@@ -287,7 +299,7 @@ def csv_export(raw_ref, api_key=None, dry_run=None):
                 index=False,
             )
 
-    logger.info(f"wrote csv files to: {directory}")
+            logger.info(f"wrote csv files to: {directory}")
 
 
 @task
