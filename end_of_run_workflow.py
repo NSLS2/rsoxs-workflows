@@ -26,5 +26,5 @@ def end_of_run_workflow(stop_doc, api_key=None, dry_run=None):
         api_key = get_api_key_from_env()
 
     # general_data_validation(uid)
-    export(uid, api_key=api_key, dry_run=None)
+    export(uid, api_key=api_key, dry_run=dry_run)
     log_completion()
