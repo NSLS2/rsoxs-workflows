@@ -7,16 +7,14 @@ from pathlib import Path
 import httpx
 import numpy
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
-from tiled.client import from_profile, show_logs
+from tiled.client import show_logs
+from data_validation import get_run, get_run_sandbox, get_sandbox_client
+import pandas as pd
+
 
 EXPORT_PATH = Path("/nsls2/data/dssi/scratch/prefect-outputs/rsoxs/")
 
 show_logs()
-api_key = Secret.load("tiled-rsoxs-api-key").get()
-tiled_client = from_profile("nsls2", api_key=api_key)["rsoxs"]
-tiled_client_raw = tiled_client["raw"]
-tiled_client_processed = tiled_client["sandbox"]
 
 
 def lookup_directory(start_doc):
@@ -58,7 +56,7 @@ def lookup_directory(start_doc):
 
 
 @task
-def write_dark_subtraction(ref):
+def write_dark_subtraction(ref, api_key=None, dry_run=None):
     """
     This is a Prefect task that perform dark subtraction.
 
@@ -104,7 +102,7 @@ def write_dark_subtraction(ref):
             light - dark.reindex_like(light, method="ffill").data, a_min=0, a_max=None
         ).astype(light.dtype)
 
-    run = tiled_client_raw[ref]
+    run = get_run(ref, api_key=api_key)
 
     full_uid = run.start["uid"]
     logger.info(f"{full_uid = }")  # noqa: E202,E251
@@ -143,17 +141,20 @@ def write_dark_subtraction(ref):
         light = primary_data[field][:]
         dark = dark_data[field][:]
         subtracted = safe_subtract(light, dark)
-        processed_array_client = tiled_client_processed.write_array(
-            subtracted.data,
-            metadata={
-                "field": field,
-                "python_environment": sys.prefix,
-                "raw_uid": full_uid,
-                "operation": "dark subtraction",
-            },
-            access_tags=["rsoxs_sandbox"],
-        )
-        results[field] = processed_array_client.item["id"]
+        if dry_run:
+            logger.info("Dry_run: not writing subtracted images to Tiled.")
+        else:
+            processed_array_client = get_sandbox_client(api_key=api_key).write_array(
+                subtracted.data,
+                metadata={
+                    "field": field,
+                    "python_environment": sys.prefix,
+                    "raw_uid": full_uid,
+                    "operation": "dark subtraction",
+                },
+                access_tags=["rsoxs_sandbox"],
+            )
+            results[field] = processed_array_client.item["id"]
 
     logger.info("completed dark subtraction")
 
@@ -162,7 +163,7 @@ def write_dark_subtraction(ref):
 
 # Make sure this only runs when the dark subtraction is successful
 @task
-def tiff_export(raw_ref, processed_refs):
+def tiff_export(raw_ref, processed_refs, api_key=None, dry_run=None):
     """
     Export processed data into a tiff file.
 
@@ -180,7 +181,7 @@ def tiff_export(raw_ref, processed_refs):
     # but for now we are maintaining backward-compatibility with existing names.
     STREAM_NAME = "primary"
 
-    start_doc = tiled_client_raw[raw_ref].start
+    start_doc = get_run(raw_ref, api_key=api_key).start
     directory = (
         lookup_directory(start_doc)
         / start_doc["project_name"]
@@ -192,20 +193,26 @@ def tiff_export(raw_ref, processed_refs):
     logger.info(f"starting tiff export to {directory}")
 
     for field, processed_uid in processed_refs.items():
-        dataset = tiled_client_processed[processed_uid]
+        dataset = get_run_sandbox(processed_uid, api_key=api_key)
         assert field == dataset.metadata["field"]
         num_frames = len(dataset)
         for i in range(num_frames):
             filename = f"{start_doc['scan_id']}-{start_doc['sample_name']}-{STREAM_NAME}-{field}-{i}.tiff"
-            logger.info(f"Exporting {filename}")
-            dataset.export(directory / filename, slice=(i), format="image/tiff")
+            if dry_run:
+                logger.info(f"Dry_run: tiff: not exporting {filename}")
+            else:
+                logger.info(f"Exporting {filename}")
+                dataset.export(directory / filename, slice=(i), format="image/tiff")
 
-    logger.info(f"wrote tiff files to: {directory}")
+    if dry_run:
+        logger.info(f"Dry_run: did not write tiff files to: {directory}")
+    else:
+        logger.info(f"wrote tiff files to: {directory}")
 
 
 # Retry this task if it fails
 @task(retries=2, retry_delay_seconds=10)
-def csv_export(raw_ref):
+def csv_export(raw_ref, api_key=None, dry_run=None):
     """
     Export each stream as a CSV file.
 
@@ -220,14 +227,14 @@ def csv_export(raw_ref):
         a scan id, or an index (e.g. -1).
 
     """
-
-    run = tiled_client_raw[raw_ref]
-    start = run.start
+    print(f"dry_run: {dry_run}")
+    run = get_run(raw_ref, api_key=api_key)
+    start_doc = run.start
 
     # Make the directories.
-    start_doc = tiled_client_raw[raw_ref].start
     base_directory = lookup_directory(start_doc) / start_doc["project_name"]
-    base_directory.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        base_directory.mkdir(parents=True, exist_ok=True)
 
     logger = get_run_logger()
     logger.info(f"starting csv export to {base_directory}")
@@ -252,9 +259,10 @@ def csv_export(raw_ref):
         logger.info(f"Exporting csv for stream {stream_name}")
 
         # Figure out the directory to write to.
-        scan_directory = f"{start['scan_id']}" if stream_name != "primary" else "."
+        scan_directory = f"{start_doc['scan_id']}" if stream_name != "primary" else "."
         directory = base_directory / scan_directory
-        directory.mkdir(parents=True, exist_ok=True)
+        if not dry_run:
+            directory.mkdir(parents=True, exist_ok=True)
 
         # Prepare the data.
         dataset = stream["data"]
@@ -263,16 +271,39 @@ def csv_export(raw_ref):
         dataframe = add_seq_num(ds)
 
         # Write the data.
-        dataframe.to_csv(
-            directory / f"{start['scan_id']}-{start['sample_name']}-{stream_name}.csv",
-            index=False,
-        )
+        if dry_run:
+            filename = (
+                directory
+                / f"{start_doc['scan_id']}-{start_doc['sample_name']}-{stream_name}.csv"
+            )
+            if len(dataframe) >= 2:
+                output_dataframe = pd.concat([dataframe.head(1)])
+            elif len(dataframe) == 1:
+                output_dataframe = pd.concat([dataframe.head(1), dataframe.tail(1)])
+            else:
+                logger.info(
+                    f"Dry run: CSV did not write file {filename}: output: (no data)"
+                )
+                return
+            csv_output = output_dataframe.to_string(
+                index=False,
+            )
+            logger.info(
+                f"Dry run: CSV: did not write to file {filename}: output: {csv_output}"
+            )
 
-    logger.info(f"wrote csv files to: {directory}")
+        else:
+            dataframe.to_csv(
+                directory
+                / f"{start_doc['scan_id']}-{start_doc['sample_name']}-{stream_name}.csv",
+                index=False,
+            )
+
+            logger.info(f"wrote csv files to: {directory}")
 
 
 @task
-def json_export(raw_ref):
+def json_export(raw_ref, api_key=None, dry_run=None):
     """
     Export start document into a json file.
 
@@ -283,7 +314,7 @@ def json_export(raw_ref):
         a scan id, or an index (e.g. -1).
 
     """
-    start_doc = tiled_client_raw[raw_ref].start
+    start_doc = get_run(raw_ref, api_key=api_key).start
     directory = (
         lookup_directory(start_doc)
         / start_doc["project_name"]
@@ -294,28 +325,35 @@ def json_export(raw_ref):
     logger = get_run_logger()
     logger.info(f"starting json export to {directory}")
 
-    with open(
-        directory / f"{start_doc['scan_id']}-{start_doc['sample_name']}.json",
-        "w",
-        encoding="utf-8",
-    ) as file:
-        json.dump(start_doc, file, ensure_ascii=False, indent=4)
+    if dry_run:
+        json_output = json.dumps(start_doc, ensure_ascii=False, indent=4)
+        filename = directory / f"{start_doc['scan_id']}-{start_doc['sample_name']}.json"
+        logger.info(
+            f"Dry_run: json: did not write to filename: {filename}: output: {json_output}"
+        )
+    else:
+        with open(
+            directory / f"{start_doc['scan_id']}-{start_doc['sample_name']}.json",
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(start_doc, file, ensure_ascii=False, indent=4)
 
-    logger.info(
-        f"wrote json file to: {str(directory / str(start_doc['scan_id']))}-{start_doc['sample_name']}.json"
-    )
+        logger.info(
+            f"wrote json file to: {str(directory / str(start_doc['scan_id']))}-{start_doc['sample_name']}.json"
+        )
 
 
 # Make the Prefect Flow.
 # A separate command is needed to register it with the Prefect server.
 @flow
-def export(ref):
+def export(ref, api_key=None, dry_run=None):
     print(f"effective user: {getpass.getuser()}")
-    csv_export(ref)
-    json_export(ref)
-    processed_refs = write_dark_subtraction(ref)
+    csv_export(ref, api_key=api_key, dry_run=dry_run)
+    json_export(ref, api_key=api_key, dry_run=dry_run)
+    processed_refs = write_dark_subtraction(ref, api_key=api_key, dry_run=dry_run)
     if processed_refs:
-        tiff_export(ref, processed_refs)
+        tiff_export(ref, processed_refs, api_key=api_key, dry_run=dry_run)
 
 
 # This line will mark this flow as succeeded based on

@@ -1,22 +1,46 @@
 import time
 
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
-from tiled.client import from_profile
+from tiled.client import from_uri
 
 
 @task(retries=2, retry_delay_seconds=10)
-def read_all_streams(uid, beamline_acronym="rsoxs"):
+def get_run(uid, api_key=None):
+    tiled_client = from_uri("https://tiled.nsls2.bnl.gov", api_key=api_key)
+    run = tiled_client["rsoxs/raw"][uid]
+    return run
+
+
+@task(retries=2, retry_delay_seconds=10)
+def get_run_sandbox(uid, api_key=None):
+    tiled_client = from_uri("https://tiled.nsls2.bnl.gov", api_key=api_key)
+    run = tiled_client["rsoxs/sandbox"][uid]
+    return run
+
+
+@task(retries=2, retry_delay_seconds=10)
+def get_sandbox_client(api_key=None):
+    tiled_client = from_uri("https://tiled.nsls2.bnl.gov", api_key=api_key)
+    sandbox_client = tiled_client["rsoxs/sandbox"]
+    return sandbox_client
+
+
+@task
+def read_stream(run, stream):
+    stream_data = run[stream].read()
+    return stream_data
+
+
+@task(retries=2, retry_delay_seconds=10)
+def read_all_streams(uid, api_key=None):
     logger = get_run_logger()
-    api_key = Secret.load(f"tiled-{beamline_acronym}-api-key").get()
-    tiled_client = from_profile("nsls2", api_key=api_key)[beamline_acronym]
-    run = tiled_client["raw"][uid]
+    run = get_run(uid, api_key=api_key)
     logger.info(f"Validating uid {run.start['uid']}")
     start_time = time.monotonic()
     for stream in run:
         logger.info(f"{stream}...")
         stream_start_time = time.monotonic()
-        stream_data = run[stream].read()
+        stream_data = read_stream(run, stream)
         stream_elapsed_time = time.monotonic() - stream_start_time
         logger.info(f"{stream} elapsed_time = {stream_elapsed_time}")
         logger.info(f"{stream} nbytes = {stream_data.nbytes: _}")
@@ -25,5 +49,5 @@ def read_all_streams(uid, beamline_acronym="rsoxs"):
 
 
 @flow
-def general_data_validation(uid, beamline_acronym="rsoxs"):
-    read_all_streams(uid, beamline_acronym)
+def general_data_validation(uid, api_key=None):
+    read_all_streams(uid, api_key=api_key)
