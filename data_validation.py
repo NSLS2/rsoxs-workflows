@@ -46,8 +46,8 @@ def read_stream(run, stream):
     return stream_data
 
 
-@task(retries=2, retry_delay_seconds=10)
-def read_all_streams(uid, api_key=None):
+@flow
+def general_data_validation(uid, api_key=None):
     logger = get_run_logger()
     run = get_run(uid, api_key=api_key)
     logger.info(f"Validating uid {run.start['uid']}")
@@ -61,8 +61,3 @@ def read_all_streams(uid, api_key=None):
         logger.info(f"{stream} nbytes = {stream_data.nbytes: _}")
     elapsed_time = time.monotonic() - start_time
     logger.info(f"{elapsed_time = }")  # noqa: E202,E251
-
-
-@flow
-def general_data_validation(uid, api_key=None):
-    read_all_streams(uid, api_key=api_key)
