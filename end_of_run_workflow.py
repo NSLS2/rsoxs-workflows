@@ -82,6 +82,6 @@ def end_of_run_workflow(stop_doc, api_key=None, dry_run=None):
     print(f"Initial value: dry_run={dry_run}")
     uid = stop_doc["run_start"]
 
-    # general_data_validation(uid)
+    # general_data_validation(uid, api_key=api_key)
     export(uid, api_key=api_key, dry_run=dry_run)
     log_completion()
