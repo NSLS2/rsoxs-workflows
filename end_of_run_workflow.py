@@ -7,7 +7,7 @@ from prefect.settings import PREFECT_UI_URL
 
 # from data_validation import general_data_validation
 from export import export
-from data_validation import get_run, get_api_key_from_env
+from data_validation import get_run
 
 CATALOG_NAME = "rsoxs"
 
@@ -34,10 +34,6 @@ def slack(func):
 
         # Get the uid.
         uid = stop_doc["run_start"]
-
-        # Get Tiled API key, if not set already
-        if not api_key:
-            api_key = get_api_key_from_env()
 
         # Get the scan_id.
         run = get_run(uid, api_key=api_key)
@@ -85,8 +81,6 @@ def log_completion():
 def end_of_run_workflow(stop_doc, api_key=None, dry_run=None):
     print(f"Initial value: dry_run={dry_run}")
     uid = stop_doc["run_start"]
-    if not api_key:
-        api_key = get_api_key_from_env()
 
     # general_data_validation(uid)
     export(uid, api_key=api_key, dry_run=dry_run)
