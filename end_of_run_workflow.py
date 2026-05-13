@@ -5,7 +5,7 @@ from prefect.blocks.notifications import SlackWebhook
 from prefect.context import FlowRunContext
 from prefect.settings import PREFECT_UI_URL
 
-# from data_validation import general_data_validation
+# from data_validation import data_validation
 from export import export
 from data_validation import get_run
 
@@ -83,6 +83,6 @@ def end_of_run_workflow(stop_doc, api_key=None, dry_run=None):
     print(f"Initial value: dry_run={dry_run}")
     uid = stop_doc["run_start"]
 
-    # general_data_validation(uid, api_key=api_key)
+    # data_validation(uid, api_key=api_key)
     export(uid, api_key=api_key, dry_run=dry_run)
     log_completion()
